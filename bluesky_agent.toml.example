@@ -17,14 +17,12 @@ poll_interval = 30.0
 omp_model = "<provider>/<model-id>"
 omp_timeout = 1800.0
 
-# Optional Manifest-hosted intent routing. These non-secret TOML keys can also
-# be set with BLUESKY_AGENT_INTENT_MODEL, BLUESKY_AGENT_INTENT_TIMEOUT, and
-# BLUESKY_AGENT_INTENT_CONFIDENCE_THRESHOLD. Prefer an exact Jev-compatible
-# model ID once the gateway exposes one; routing fails open when it does not.
-# The gateway URL and key remain OPENAI_BASE_URL and OPENAI_API_KEY variables.
+# Optional Manifest-hosted prompt classification. These non-secret TOML keys
+# can also be set with BLUESKY_AGENT_INTENT_MODEL and
+# BLUESKY_AGENT_INTENT_TIMEOUT. The gateway URL and key remain
+# OPENAI_BASE_URL and OPENAI_API_KEY variables. Routing fails open.
 intent_model = "auto"
 intent_timeout = 10.0
-intent_confidence_threshold = 0.70
 
 wiki_ready_timeout = 180.0
 wiki_ready_interval = 3.0

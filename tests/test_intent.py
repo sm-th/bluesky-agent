@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from bluesky_agent.config import Config, ConfigError
+from bluesky_agent.config import Config
 from bluesky_agent.intent import IntentRouter, ResearchMode
 from bluesky_agent.models import Turn
 
@@ -66,21 +66,15 @@ def turn(text: str, *, reply: bool = False) -> Turn:
 
 
 def completion(
-    choice: str = "QUESTION_ANSWER",
+    mode: str = "QUESTION_ANSWER",
     *,
-    confidence: float = 0.91,
-    probabilities: dict[str, float] | None = None,
-    model: str = "typesafe/jev",
+    model: str = "openai/gpt-5-mini",
+    answer: object | None = None,
 ) -> dict[str, object]:
-    answer = {
-        "choice": choice,
-        "probabilities": probabilities
-        or {"SOURCE_BRIEF": 0.04, "QUESTION_ANSWER": 0.91, "NOTE_EXPLORE": 0.05},
-        "confidence": confidence,
-    }
+    content = answer if answer is not None else {"mode": mode}
     return {
         "model": model,
-        "choices": [{"message": {"content": json.dumps(answer)}}],
+        "choices": [{"message": {"content": json.dumps(content)}}],
     }
 
 
@@ -128,7 +122,7 @@ class StructuralRoutingTests(unittest.TestCase):
             urlopen.assert_not_called()
 
 
-class ManifestRoutingTests(unittest.TestCase):
+class ManifestPromptRoutingTests(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -139,7 +133,7 @@ class ManifestRoutingTests(unittest.TestCase):
         }
         self.router = IntentRouter.from_environment(self.config, self.environment)
 
-    def test_valid_high_confidence_decision_records_distribution_and_model(self) -> None:
+    def test_valid_prompt_decision_accepts_any_configured_model(self) -> None:
         calls: list[object] = []
 
         def fake_urlopen(request: object, *, timeout: float) -> FakeHTTPResponse:
@@ -150,10 +144,8 @@ class ManifestRoutingTests(unittest.TestCase):
             decision = self.router.route(turn("Compare consistency models across these systems."))
 
         self.assertEqual(decision.mode, ResearchMode.QUESTION_ANSWER)
-        self.assertEqual(decision.confidence, 0.91)
-        self.assertEqual(decision.probabilities[ResearchMode.NOTE_EXPLORE], 0.05)
         self.assertEqual(decision.source, "manifest")
-        self.assertEqual(decision.model, "typesafe/jev")
+        self.assertEqual(decision.model, "openai/gpt-5-mini")
         self.assertIsNone(decision.fallback_reason)
         self.assertEqual(len(calls), 1)
 
@@ -167,34 +159,30 @@ class ManifestRoutingTests(unittest.TestCase):
             {"text", "has_url", "explicit_question", "source_directive", "is_reply"},
         )
         self.assertEqual(user_content["text"], "Compare consistency models across these systems.")
+        self.assertEqual(payload["max_tokens"], 64)
+        self.assertFalse(payload["store"])
+        self.assertEqual(
+            payload["response_format"]["json_schema"]["schema"]["required"],
+            ["mode"],
+        )
         self.assertNotIn("never-print-this", repr(self.router))
         self.assertNotIn("never-print-this", repr(decision))
 
-    def test_low_confidence_falls_back_without_retry(self) -> None:
-        with patch(
-            "bluesky_agent.intent.urllib.request.urlopen",
-            return_value=FakeHTTPResponse(completion(confidence=0.69)),
-        ) as urlopen:
-            decision = self.router.route(turn("A note about distributed ownership."))
-        self.assertEqual(decision.mode, ResearchMode.NOTE_EXPLORE)
-        self.assertEqual(decision.fallback_reason, "low_confidence")
-        self.assertEqual(urlopen.call_count, 1)
-
-    def test_malformed_diagnostic_and_transport_failures_fall_back_once(self) -> None:
+    def test_gateway_and_schema_failures_fall_back_without_retry(self) -> None:
         responses: list[object] = [
             {"model": "auto", "choices": [{"message": {"content": "not json"}}]},
             {"error": {"code": "M101", "message": "No provider connected"}},
-            completion(model="openai/gpt-5"),
-            completion(
-                choice="NOTE_EXPLORE",
-                probabilities={"SOURCE_BRIEF": 0.05, "QUESTION_ANSWER": 0.90, "NOTE_EXPLORE": 0.05},
-            ),
+            {
+                "model": "manifest",
+                "choices": [{"message": {"content": "[Manifest M302] model unavailable"}}],
+            },
+            completion(answer={"mode": "QUESTION_ANSWER", "extra": True}),
             TimeoutError("gateway timed out"),
         ]
         expected = [
             "malformed_response",
             "gateway_diagnostic",
-            "unexpected_model",
+            "gateway_diagnostic",
             "malformed_response",
             "gateway_failure",
         ]
@@ -225,9 +213,8 @@ class IntentConfigTests(unittest.TestCase):
                         'agent_handle = "agent.example"',
                         'wiki_repo_url = "https://github.com/example/wiki.git"',
                         'wiki_site_url = "https://wiki.example"',
-                        'intent_model = "typesafe/jev"',
+                        'intent_model = "auto"',
                         "intent_timeout = 4.5",
-                        "intent_confidence_threshold = 0.75",
                     ]
                 ),
                 encoding="utf-8",
@@ -240,14 +227,8 @@ class IntentConfigTests(unittest.TestCase):
                     "BLUESKY_AGENT_INTENT_TIMEOUT": "2.25",
                 },
             )
-            self.assertEqual(config.intent_model, "typesafe/jev")
+            self.assertEqual(config.intent_model, "auto")
             self.assertEqual(config.intent_timeout, 2.25)
-            self.assertEqual(config.intent_confidence_threshold, 0.75)
-
-    def test_confidence_threshold_is_bounded(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(ConfigError, "at most one"):
-                make_config(Path(directory), intent_confidence_threshold=1.01)
 
 
 if __name__ == "__main__":

@@ -203,11 +203,6 @@ class ResearchPipeline:
                 "mode": routing.mode.value,
                 "routing": {
                     "mode": routing.mode.value,
-                    "confidence": routing.confidence,
-                    "probabilities": {
-                        mode.value: probability
-                        for mode, probability in routing.probabilities.items()
-                    },
                     "source": routing.source,
                     "model": routing.model,
                     "fallback_reason": routing.fallback_reason,

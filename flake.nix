@@ -228,7 +228,6 @@ PY
                 BLUESKY_AGENT_OMP_TIMEOUT
                 BLUESKY_AGENT_INTENT_MODEL
                 BLUESKY_AGENT_INTENT_TIMEOUT
-                BLUESKY_AGENT_INTENT_CONFIDENCE_THRESHOLD
                 BLUESKY_AGENT_WIKI_READY_TIMEOUT
                 BLUESKY_AGENT_WIKI_READY_INTERVAL
                 BLUESKY_AGENT_GIT_USER_NAME
@@ -266,7 +265,6 @@ fields = {
     "omp_timeout",
     "intent_model",
     "intent_timeout",
-    "intent_confidence_threshold",
     "wiki_ready_timeout",
     "wiki_ready_interval",
     "git_user_name",
