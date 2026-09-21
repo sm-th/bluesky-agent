@@ -98,6 +98,7 @@ class PageScreenshot:
                             "--no-first-run",
                             "--no-sandbox",
                             "--remote-debugging-port=0",
+                            "--remote-allow-origins=*",
                             f"--user-data-dir={profile_dir}",
                             "about:blank",
                         ],
@@ -228,9 +229,7 @@ class PageScreenshot:
                     + '*::-webkit-scrollbar { display: none !important; }';
                 document.documentElement.style.overflow = 'hidden';
                 document.body.style.overflow = 'hidden';
-                return new Promise(resolve => requestAnimationFrame(
-                    () => requestAnimationFrame(() => resolve(true))
-                ));
+                return true;
             })()""",
         )
         dimensions = self._evaluate(
@@ -544,10 +543,14 @@ class _DevToolsConnection:
                     if b":" in line
                 )
             }
-            if status_line != b"HTTP/1.1 101 Switching Protocols" or headers.get(
-                b"sec-websocket-accept"
-            ) != expected_accept:
-                raise PageScreenshotError("Chromium rejected the DevTools connection")
+            if (
+                not status_line.startswith(b"HTTP/1.1 101 ")
+                or headers.get(b"sec-websocket-accept") != expected_accept
+            ):
+                detail = status_line.decode("ascii", "replace")
+                raise PageScreenshotError(
+                    f"Chromium rejected the DevTools connection: {detail}"
+                )
         except Exception:
             connection.close()
             raise
