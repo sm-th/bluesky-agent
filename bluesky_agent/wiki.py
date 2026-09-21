@@ -40,19 +40,19 @@ _SECRET_ENV_NAMES = (
     "TAVILY_API_KEY",
 )
 _TRUSTED_SCAFFOLD = {
-    "AGENTS.md": "6306785549e729ee34e5623f765c91075c621fbe411175f7d12577ccc3d05c8a",
+    "AGENTS.md": "ef10ec68c91c8d13e0e2fc82b56e74c126fbd67c050cbd049ca8109d8a360c8a",
     ".github/workflows/deploy.yml": "2f504e31cd99fe39777119770c4c712411c111e6c06643f4eefc2590aae1c8f5",
     "eleventy.config.js": "bd2fa3399524cb23d479b39e0b9d18afbf8010e28b657be4e58d1fb5985a9f37",
     "package.json": "6d8077e71863678e912f66a84802a62c5110cc797cecbd6234b042dbd3510308",
     "package-lock.json": "edb1258d642126915ee0b20701912d7d477fc7b87eb072ff695caf2ef2d9266f",
     "wiki/_includes/layouts/base.njk": "a771261d06bf7383e7a674d528ac817fcad1a075daef87b98f6516d98c445097",
     "wiki/_includes/layouts/page.njk": "fac2ace0d951f9db8bb12713dd81c098b43038acd13de769f5b0e31fb95eec39",
-    "wiki/_includes/layouts/research.njk": "3a2e9053d3efd38d87d419d826e083d748a42bf4728de826b5e328c04ffedf22",
+    "wiki/_includes/layouts/research.njk": "76260eb3645f7e0db7f17a3e69fdef781e2cb01fa6213039fe27dcf9270278ea",
     "wiki/research/research.11tydata.js": "d3ffb304d90d49151184405bd190214871c9ae49228bf13ba3575fae7d13c345",
     "wiki/sources/sources.11tydata.json": "6df882b8d6ef60edddca9b36f644e476b6eab498563fba605db029300ea3bd30",
     "wiki/entities/entities.11tydata.json": "a95e52482329d2545e8e56ad5ba9fe04d3516b9be182f8227c61cc573cde45df",
     "wiki/concepts/concepts.11tydata.json": "b3830d858e4a892c012c9826bafdaea5897368a902733bd94c9b27ea3b887530",
-    "wiki/assets/site.css": "7a31a10d472b6a63969d5c83de83e317d750522642bbf948c283ca2bd59cb409",
+    "wiki/assets/site.css": "9d71fb8dbf41f7bfc9c1102c37c0e91ba298b677deda5911199436499f0a5c30",
 }
 
 
@@ -351,7 +351,7 @@ class WikiRepository:
 
         if timeout <= 0 or interval <= 0:
             raise ValueError("Wiki readiness timeout and interval must be positive")
-        marker = f'<article class="research-card" data-research-turn="{rkey}">'
+        marker = f'<article class="research-card" data-research-turn="{rkey}"'
         deadline = time.monotonic() + timeout
         last_problem = "deployment was not checked"
         while True:

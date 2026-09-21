@@ -30,6 +30,9 @@ _DEFAULTS: dict[str, object] = {
     "poll_interval": 30.0,
     "omp_model": "openai-codex/gpt-5.6-sol",
     "omp_timeout": 1800.0,
+    "intent_model": "auto",
+    "intent_timeout": 10.0,
+    "intent_confidence_threshold": 0.70,
     "wiki_ready_timeout": 120.0,
     "wiki_ready_interval": 2.0,
     "chromium_bin": "chromium",
@@ -37,7 +40,14 @@ _DEFAULTS: dict[str, object] = {
     "git_user_email": "bluesky-agent@localhost",
 }
 _FLOAT_FIELDS = frozenset(
-    {"poll_interval", "omp_timeout", "wiki_ready_timeout", "wiki_ready_interval"}
+    {
+        "poll_interval",
+        "omp_timeout",
+        "intent_timeout",
+        "intent_confidence_threshold",
+        "wiki_ready_timeout",
+        "wiki_ready_interval",
+    }
 )
 
 
@@ -72,6 +82,9 @@ class Config:
     git_user_name: str
     git_user_email: str
     github_token: str
+    intent_model: str = "auto"
+    intent_timeout: float = 10.0
+    intent_confidence_threshold: float = 0.70
 
     def __post_init__(self) -> None:
         for field in fields(self):
@@ -95,6 +108,8 @@ class Config:
             value = getattr(self, name)
             if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
                 raise ConfigError(f"{name} must be greater than zero")
+        if not 0 < self.intent_confidence_threshold <= 1:
+            raise ConfigError("intent_confidence_threshold must be greater than zero and at most one")
         if not isinstance(self.state_dir, Path):
             raise ConfigError("state_dir must be a pathlib.Path")
 

@@ -11,6 +11,7 @@ from typing import Protocol
 from .atproto import MAX_GRAPHEMES as MAX_BLUESKY_GRAPHEMES
 from .atproto import grapheme_count
 
+from .intent import IntentRouter, ResearchMode, RoutingDecision
 from .models import Publication, Turn
 from .omp import OMPRunner
 from .prompts import RESEARCH_PAGE_MAX_WORDS, build_research_prompt
@@ -19,7 +20,7 @@ from .wiki import WikiRepository
 
 _SOURCE_LINK_RE = re.compile(r"\[[^\]\n]+\]\(\.\./sources/([A-Za-z0-9][A-Za-z0-9._~-]*)/\)")
 MAX_RESEARCH_PAGE_BYTES = 60_000
-_REQUIRED_FRONTMATTER = {"title", "rkey", "date", "brief", "turn_url"}
+_REQUIRED_FRONTMATTER = {"title", "rkey", "date", "brief", "turn_url", "mode"}
 _WORD_RE = re.compile(r"\b[^\W_]+(?:[’'-][^\W_]+)*\b", re.UNICODE)
 _NON_ENGLISH_SCRIPTS = (
     "ARABIC",
@@ -81,6 +82,7 @@ class ResearchPipeline:
             str(getattr(config, "git_user_email")),
             str(getattr(config, "github_token")),
         )
+        self.router = IntentRouter.from_environment(config)
 
     def run(self, turn: Turn, parent_session: Path | None) -> Publication:
         """Research, deploy, verify, and render a single accepted turn."""
@@ -94,16 +96,22 @@ class ResearchPipeline:
         if page_path.exists():
             return self._recover_publication(turn, page_path, page_url)
 
+        parent_mode = self._parent_mode(turn)
+        routing = self.router.route(turn, parent_mode)
         receipt_path.unlink(missing_ok=True)
         original_head = self.wiki.head()
         try:
             self.wiki.archive_turn(turn)
             original_raw = self.wiki.raw_snapshot()
-            prompt = build_research_prompt(turn, operator_handle=str(getattr(self.config, "operator_handle")))
+            prompt = build_research_prompt(
+                turn,
+                routing.mode,
+                operator_handle=str(getattr(self.config, "operator_handle")),
+            )
             omp_result = self.omp.run(prompt, self.wiki.path, parent_session)
             brief = parse_brief_reply(omp_result.assistant_text)
             validate_bluesky_reply(brief, page_url)
-            self._write_recovery(turn, omp_result.session_file, brief)
+            self._write_recovery(turn, omp_result.session_file, brief, routing)
 
             page_path = self.wiki.validate_agent_changes(
                 original_head=original_head,
@@ -116,6 +124,7 @@ class ResearchPipeline:
                 turn,
                 brief,
                 operator_handle=str(getattr(self.config, "operator_handle")),
+                mode=routing.mode,
             )
         except BaseException:
             self.wiki.discard_changes(original_head)
@@ -128,7 +137,13 @@ class ResearchPipeline:
             self.wiki.discard_changes(original_head)
             receipt_path.unlink(missing_ok=True)
             raise
-        return self._capture_publication(turn, page_url, brief, omp_result.session_file)
+        return self._capture_publication(
+            turn,
+            page_url,
+            brief,
+            omp_result.session_file,
+            routing.mode,
+        )
 
     def _recover_publication(self, turn: Turn, page_path: Path, page_url: str) -> Publication:
         receipt_path = self.recovery_dir / f"{turn.rkey}.json"
@@ -142,6 +157,7 @@ class ResearchPipeline:
             or receipt.get("turn_cid") != turn.cid
             or not isinstance(receipt.get("brief"), str)
             or not isinstance(receipt.get("session_file"), str)
+            or not isinstance(receipt.get("mode"), str)
         ):
             raise ResearchError("Recovery receipt does not match the accepted Research Turn")
         session_source = Path(receipt["session_file"]).expanduser()
@@ -155,16 +171,27 @@ class ResearchPipeline:
         if not session_file.is_file() or session_file.suffix != ".jsonl":
             raise ResearchError("Recovery receipt names an invalid Research Session")
         brief = receipt["brief"]
+        try:
+            mode = ResearchMode(receipt["mode"])
+        except ValueError as exc:
+            raise ResearchError("Recovery receipt contains an invalid research mode") from exc
         validate_bluesky_reply(brief, page_url)
         validate_research_page(
             page_path,
             turn,
             brief,
             operator_handle=str(getattr(self.config, "operator_handle")),
+            mode=mode,
         )
-        return self._capture_publication(turn, page_url, brief, session_file)
+        return self._capture_publication(turn, page_url, brief, session_file, mode)
 
-    def _write_recovery(self, turn: Turn, session_file: Path, brief: str) -> None:
+    def _write_recovery(
+        self,
+        turn: Turn,
+        session_file: Path,
+        brief: str,
+        routing: RoutingDecision,
+    ) -> None:
         self.recovery_dir.mkdir(parents=True, exist_ok=True)
         target = self.recovery_dir / f"{turn.rkey}.json"
         payload = json.dumps(
@@ -173,6 +200,18 @@ class ResearchPipeline:
                 "turn_cid": turn.cid,
                 "session_file": str(session_file),
                 "brief": brief,
+                "mode": routing.mode.value,
+                "routing": {
+                    "mode": routing.mode.value,
+                    "confidence": routing.confidence,
+                    "probabilities": {
+                        mode.value: probability
+                        for mode, probability in routing.probabilities.items()
+                    },
+                    "source": routing.source,
+                    "model": routing.model,
+                    "fallback_reason": routing.fallback_reason,
+                },
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -190,12 +229,31 @@ class ResearchPipeline:
             target.unlink(missing_ok=True)
             raise
 
+    def _parent_mode(self, turn: Turn) -> ResearchMode | None:
+        if turn.parent_turn_uri is None:
+            return None
+        parent_rkey = turn.parent_turn_uri.rsplit("/", 1)[-1]
+        parent_path = self.wiki.path / "wiki" / "research" / f"{parent_rkey}.md"
+        if parent_path.is_symlink() or not parent_path.is_file():
+            raise ResearchError("Settled parent Research Page is missing")
+        try:
+            text = parent_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise ResearchError("Settled parent Research Page is unreadable") from exc
+        frontmatter, _ = _split_frontmatter(text)
+        try:
+            return ResearchMode(frontmatter.get("mode", ""))
+        except ValueError as exc:
+            raise ResearchError("Settled parent Research Page has an invalid mode") from exc
+
+
     def _capture_publication(
         self,
         turn: Turn,
         page_url: str,
         brief: str,
         session_file: Path,
+        mode: ResearchMode,
     ) -> Publication:
         self.wiki.wait_for_page(
             page_url,
@@ -210,7 +268,12 @@ class ResearchPipeline:
         if not image_path.is_file():
             raise ResearchError("PageScreenshot did not return a regular image file")
 
-        alt_text = f"Screenshot of the expanded research answer. {brief}"
+        label = {
+            ResearchMode.SOURCE_BRIEF: "source brief",
+            ResearchMode.QUESTION_ANSWER: "research answer",
+            ResearchMode.NOTE_EXPLORE: "research exploration",
+        }[mode]
+        alt_text = f"Screenshot of the expanded {label}. {brief}"
         ensure_english_only(alt_text, "Page Screenshot alt text")
         return Publication(
             brief=brief,
@@ -253,6 +316,7 @@ def validate_research_page(
     brief: str,
     *,
     operator_handle: str,
+    mode: ResearchMode,
 ) -> None:
     """Validate the compact public page before it can be committed."""
 
@@ -286,10 +350,17 @@ def validate_research_page(
     expected_turn_url = bluesky_turn_url(operator_handle, turn.rkey)
     if frontmatter["turn_url"] != expected_turn_url:
         raise ResearchError("Research Page turn_url is not the canonical Bluesky URL")
+    if frontmatter["mode"] != mode.value:
+        raise ResearchError("Research Page mode does not match the routed research mode")
     if not frontmatter["title"].strip():
         raise ResearchError("Research Page title is empty")
-    if re.search(r"^## Answer\s*$", body, re.MULTILINE) is None:
-        raise ResearchError("Research Page is missing its Answer section")
+    required_heading = {
+        ResearchMode.SOURCE_BRIEF: "Source brief",
+        ResearchMode.QUESTION_ANSWER: "Answer",
+        ResearchMode.NOTE_EXPLORE: "Exploration",
+    }[mode]
+    if re.search(rf"^## {re.escape(required_heading)}\s*$", body, re.MULTILINE) is None:
+        raise ResearchError(f"Research Page is missing its {required_heading} section")
     if len(_WORD_RE.findall(body)) > RESEARCH_PAGE_MAX_WORDS:
         raise ResearchError(f"Research Page exceeds {RESEARCH_PAGE_MAX_WORDS} words")
     source_slugs = _SOURCE_LINK_RE.findall(body)

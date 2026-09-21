@@ -4,6 +4,7 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
+from bluesky_agent.intent import ResearchMode
 from bluesky_agent.models import Turn
 from bluesky_agent.research import (
     ResearchError,
@@ -29,16 +30,22 @@ def _turn() -> Turn:
     )
 
 
-def _page(brief: str = "The evidence supports the narrower claim.") -> str:
+def _page(
+    brief: str = "The evidence supports the narrower claim.",
+    *,
+    mode: ResearchMode = ResearchMode.QUESTION_ANSWER,
+    heading: str = "Answer",
+) -> str:
     return f'''---
 title: A narrow answer
 rkey: 3abc
 date: 2026-09-21T00:00:00Z
 brief: {brief}
 turn_url: https://bsky.app/profile/operator.example/post/3abc
+mode: {mode.value}
 ---
 
-## Answer
+## {heading}
 
 The evidence supports the narrower claim ([S1](../sources/source/)).
 '''
@@ -75,11 +82,23 @@ def test_research_page_validates_schema_brief_language_and_size(tmp_path: Path) 
     brief = "The evidence supports the narrower claim."
     page.write_text(_page(brief), encoding="utf-8")
 
-    validate_research_page(page, _turn(), brief, operator_handle="operator.example")
+    validate_research_page(
+        page,
+        _turn(),
+        brief,
+        operator_handle="operator.example",
+        mode=ResearchMode.QUESTION_ANSWER,
+    )
 
     page.write_text(_page(brief).replace("The evidence supports", "証拠は支持する"), encoding="utf-8")
     with pytest.raises(ResearchError, match="non-English"):
-        validate_research_page(page, _turn(), brief, operator_handle="operator.example")
+        validate_research_page(
+            page,
+            _turn(),
+            brief,
+            operator_handle="operator.example",
+            mode=ResearchMode.QUESTION_ANSWER,
+        )
 
 
 def test_research_page_rejects_missing_page_contract(tmp_path: Path) -> None:
@@ -93,6 +112,7 @@ def test_research_page_rejects_missing_page_contract(tmp_path: Path) -> None:
             _turn(),
             "The evidence supports the narrower claim.",
             operator_handle="operator.example",
+            mode=ResearchMode.QUESTION_ANSWER,
         )
 
 
@@ -110,6 +130,51 @@ def test_research_page_rejects_frontmatter_engine_override(tmp_path: Path) -> No
             _turn(),
             "The evidence supports the narrower claim.",
             operator_handle="operator.example",
+            mode=ResearchMode.QUESTION_ANSWER,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mode", "heading"),
+    (
+        (ResearchMode.SOURCE_BRIEF, "Source brief"),
+        (ResearchMode.QUESTION_ANSWER, "Answer"),
+        (ResearchMode.NOTE_EXPLORE, "Exploration"),
+    ),
+)
+def test_research_page_requires_heading_for_routed_mode(
+    tmp_path: Path,
+    mode: ResearchMode,
+    heading: str,
+) -> None:
+    page = tmp_path / "wiki" / "research" / "3abc.md"
+    page.parent.mkdir(parents=True)
+    source = tmp_path / "wiki" / "sources" / "source.md"
+    source.parent.mkdir()
+    source.write_text(
+        "Original URL: https://example.com\nPreserved evidence: raw/linked/source.md\n",
+        encoding="utf-8",
+    )
+    brief = "The evidence supports the narrower claim."
+    page.write_text(_page(brief, mode=mode, heading=heading), encoding="utf-8")
+
+    validate_research_page(
+        page,
+        _turn(),
+        brief,
+        operator_handle="operator.example",
+        mode=mode,
+    )
+
+    with pytest.raises(ResearchError, match="mode does not match"):
+        validate_research_page(
+            page,
+            _turn(),
+            brief,
+            operator_handle="operator.example",
+            mode=ResearchMode.NOTE_EXPLORE
+            if mode is not ResearchMode.NOTE_EXPLORE
+            else ResearchMode.QUESTION_ANSWER,
         )
 
 
