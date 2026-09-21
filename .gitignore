@@ -1,0 +1,21 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+bluesky_agent.toml
+
+# Persistent runtime state
+.state/
+
+# direnv and Nix outputs
+.direnv/
+result
+result-*
+
+# Python build and cache artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/

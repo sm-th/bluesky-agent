@@ -1,0 +1,28 @@
+# Copy this file to bluesky_agent.toml and replace every angle-bracketed value.
+# Every Brief Reply, Research Page, Page Screenshot, and maintained wiki page is
+# published in English, regardless of the language of a source or Research Turn.
+
+operator_handle = "<operator-handle>"
+operator_did = "did:plc:<operator-did>"
+agent_handle = "<agent-handle>"
+
+bluesky_service = "https://bsky.social"
+bluesky_public_api = "https://public.api.bsky.app"
+
+wiki_repo_url = "https://github.com/<owner>/<research-wiki-repository>.git"
+wiki_site_url = "https://<owner>.github.io/<research-wiki-repository>"
+state_dir = ".state"
+
+poll_interval = 30.0
+omp_model = "<provider>/<model-id>"
+omp_timeout = 1800.0
+wiki_ready_timeout = 180.0
+wiki_ready_interval = 3.0
+chromium_bin = "chromium"
+
+git_user_name = "<agent-git-name>"
+git_user_email = "<agent-git-email>"
+
+# agent_app_password and github_token are intentionally absent. Supply them
+# through SecretSpec as BLUESKY_AGENT_APP_PASSWORD and
+# BLUESKY_AGENT_GITHUB_TOKEN; never store either credential in this file.

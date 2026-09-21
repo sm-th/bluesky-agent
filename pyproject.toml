@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bluesky-agent"
+version = "0.1.0"
+description = "Autonomous Bluesky-triggered research agent"
+requires-python = ">=3.11"
+dependencies = [
+  "Pillow>=10.0",
+  "regex>=2023.10.3",
+]
+
+[project.scripts]
+bluesky-agent = "bluesky_agent.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["bluesky_agent*"]
