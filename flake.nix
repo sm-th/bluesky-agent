@@ -110,9 +110,9 @@ PY
             text = ''
               if [ "$#" -eq 0 ]; then set -- doctor; fi
               case "$1" in
-                activate|once|run|doctor) ;;
+                activate|once|run|doctor|show) ;;
                 *)
-                  echo "usage: nix run .#debug -- activate|once|run|doctor" >&2
+                  echo "usage: nix run .#debug -- activate|once|run|doctor|show" >&2
                   exit 2
                   ;;
               esac
@@ -135,9 +135,9 @@ PY
             text = ''
               if [ "$#" -eq 0 ]; then set -- doctor; fi
               case "$1" in
-                activate|once|run|doctor) ;;
+                activate|once|run|doctor|show) ;;
                 *)
-                  echo "usage: nix run .#sandbox -- activate|once|run|doctor" >&2
+                  echo "usage: nix run .#sandbox -- activate|once|run|doctor|show" >&2
                   exit 2
                   ;;
               esac
@@ -340,7 +340,7 @@ PY
             ];
             shellHook = ''
               echo "bluesky-agent: nix run .#debug -- doctor"
-              echo "sandbox:      nix run .#sandbox -- activate|once|run|doctor"
+              echo "sandbox:      nix run .#sandbox -- activate|once|run|doctor|show"
             '';
           };
         });
