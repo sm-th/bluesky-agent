@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Mapping
 
+from .intent import ResearchMode
 from .models import Turn
 
 
@@ -346,12 +347,22 @@ class WikiRepository:
         _validate_rkey(rkey)
         return f"{self.site_url}/{rkey}/"
 
-    def wait_for_page(self, page_url: str, rkey: str, timeout: float, interval: float) -> None:
-        """Wait for the deployed renderer's exact per-turn article marker."""
+    def wait_for_page(
+        self,
+        page_url: str,
+        rkey: str,
+        mode: ResearchMode,
+        timeout: float,
+        interval: float,
+    ) -> None:
+        """Wait for the deployed renderer's exact per-turn, per-mode article marker."""
 
         if timeout <= 0 or interval <= 0:
             raise ValueError("Wiki readiness timeout and interval must be positive")
-        marker = f'<article class="research-card" data-research-turn="{rkey}"'
+        marker = (
+            f'<article class="research-card" data-research-turn="{rkey}" '
+            f'data-research-mode="{mode.value}">'
+        )
         deadline = time.monotonic() + timeout
         last_problem = "deployment was not checked"
         while True:

@@ -5,6 +5,7 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
+from bluesky_agent.intent import ResearchMode
 from bluesky_agent.wiki import WikiError, WikiRepository
 
 
@@ -40,6 +41,61 @@ def _initialize(path: Path) -> None:
     )
     _git(path, "config", "user.name", "Test")
     _git(path, "config", "user.email", "test@example.com")
+
+class _PageResponse:
+    status = 200
+
+    def __init__(self, html: str) -> None:
+        self.body = html.encode("utf-8")
+
+    def __enter__(self) -> _PageResponse:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def read(self, limit: int) -> bytes:
+        return self.body[:limit]
+
+
+def test_deployment_readiness_requires_matching_turn_and_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = _repository(tmp_path)
+    exact = (
+        '<article class="research-card" data-research-turn="turn-1" '
+        'data-research-mode="SOURCE_BRIEF">'
+    )
+    monkeypatch.setattr(
+        "bluesky_agent.wiki.urllib.request.urlopen",
+        lambda request, timeout: _PageResponse(exact),
+    )
+
+    repository.wait_for_page(
+        "https://wiki.example/turn-1/",
+        "turn-1",
+        ResearchMode.SOURCE_BRIEF,
+        timeout=1,
+        interval=0.1,
+    )
+
+    wrong_mode = exact.replace("SOURCE_BRIEF", "NOTE_EXPLORE")
+    monkeypatch.setattr(
+        "bluesky_agent.wiki.urllib.request.urlopen",
+        lambda request, timeout: _PageResponse(wrong_mode),
+    )
+    moments = iter((0.0, 0.0, 2.0, 2.0))
+    monkeypatch.setattr("bluesky_agent.wiki.time.monotonic", lambda: next(moments))
+    monkeypatch.setattr("bluesky_agent.wiki.time.sleep", lambda seconds: None)
+
+    with pytest.raises(WikiError, match="did not deploy"):
+        repository.wait_for_page(
+            "https://wiki.example/turn-1/",
+            "turn-1",
+            ResearchMode.SOURCE_BRIEF,
+            timeout=1,
+            interval=0.1,
+        )
 
 
 def test_git_hooks_are_disabled_for_publication_commands(tmp_path: Path) -> None:

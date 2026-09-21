@@ -258,6 +258,7 @@ class ResearchPipeline:
         self.wiki.wait_for_page(
             page_url,
             turn.rkey,
+            mode,
             float(getattr(self.config, "wiki_ready_timeout")),
             float(getattr(self.config, "wiki_ready_interval")),
         )
